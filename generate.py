@@ -124,11 +124,11 @@ def main(question: str, model):
     length = 100
     batch_size = 1
     nsamples = 1
-    temperature = 0.65
-    topk = 150
+    temperature = 0.7
+    topk = 100
     topp = 0.9
     prefix=question
-    save_samples = True
+    save_samples = False
     save_samples_path = './storage/generate'
     fast_pattern = False
 
@@ -167,9 +167,8 @@ def main(question: str, model):
                 for i, item in enumerate(text[:-1]):  # 确保英文前后有空格
                     if is_word(item) and is_word(text[i + 1]):
                         text[i] = item + ' '
-                print(text)
                 for i, item in enumerate(text):
-                    if item == '[MASK]' or item == '[SEP]' or item == '[UNK]':
+                    if item == '[MASK]' or item == '[UNK]':
                         text[i] = ''
                     if item == '[CLS]':
                         text[i] = '\n'
@@ -180,11 +179,18 @@ def main(question: str, model):
                 for t in text:
                     if t != '[EOS]': res.append(t)
                     else: break
-
-                text = ''.join(res).replace('##', '').strip()
+                
+                input_text = res[: res.index('[SEP]') + 1]
+                input_text= ''.join(input_text).replace('##', '').strip()
+                
+                response_text = res[res.index('[SEP]') + 1: ]
+                
+                response_text = ''.join(['' if i == '[SEP]' else i for i in response_text ]).replace('##', '').strip()
+                
                 if save_samples:
                     samples_file.write(info)
-                    samples_file.write(text)
+                    
+                    samples_file.write(input_text + response_text)
                     samples_file.write('\n')
                     samples_file.write('=' * 90)
                     samples_file.write('\n' * 2)
@@ -194,6 +200,7 @@ def main(question: str, model):
             if save_samples:
                 samples_file.close()
             break
-    return text[len(question): ]
+    
+    return response_text
     
 

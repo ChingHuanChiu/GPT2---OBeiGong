@@ -6,7 +6,7 @@ from src.model.gpt import GPT2
 from generate import main
 
 
-CKPT_PATH = './storage/ckpt/drcd_with_ppt/ckpt_ep_50_bs_8model_epoch18.pkl'
+CKPT_PATH = './storage/ckpt/ckpt_ep_50_bs_16model_epoch2.pkl'
 
 tokenizer = BertTokenizerFast.from_pretrained('./save/')
 model=GPT2(tokenizer)
@@ -17,13 +17,13 @@ model = load_model_from_checkpoint(device='cuda:0', model_ckpt=CKPT_PATH, model=
 
 print('嗨！你好')
 while True:
-    inp = input('問我問題: ')
+    inp = input('Q: ')
 
     if inp == '掰掰':
         print('掰掰 !')
         break
-        
-    print('我的回答: ', main(inp, model))
+    inp += '[SEP]'
+    print('Model: ', main(inp, model))
     
 
         
