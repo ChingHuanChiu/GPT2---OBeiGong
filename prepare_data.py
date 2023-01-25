@@ -2,7 +2,7 @@ import glob
 from typing import List
 
 
-from opencc import OpenCC
+# from opencc import OpenCC
 import pandas as pd
 import yaml
 from tqdm import tqdm
@@ -42,8 +42,9 @@ def make_chinese_chatbot_data() -> List[str]:
                 for i in converstions:
                     for idx in range(0,  len(i), 2):
                         try:
-                       
-                            context_with_Q_A.append(cc.convert(i[idx]) + '[SEP]' + cc.convert(i[idx+1]))
+                            if i[idx][-1] != '?':
+                                i[idx] += '?'
+                            context_with_Q_A.append(cc.convert(i[idx]) + cc.convert(i[idx+1]))
                         except:
                             print('length of data is not even', len(i), i)
 

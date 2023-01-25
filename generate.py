@@ -73,7 +73,13 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 
 
 
-def sample_sequence(model, context, length, temperature=1, top_k=0, top_p=0.0, device='cpu'):
+def sample_sequence(tokenizer, model, inputs_dict, length, temperature=1, top_k=0, top_p=0.0, device='cpu'):
+    
+    # remove [SEP] token
+    for k, v in inputs_dict.items():
+        inputs_dict[k] = v[: -1]
+        
+    context = inputs_dict['input_ids']
     context = torch.tensor(context, dtype=torch.long, device=device)
     context = context.unsqueeze(0)
     generated = context
@@ -81,7 +87,9 @@ def sample_sequence(model, context, length, temperature=1, top_k=0, top_p=0.0, d
         # for _ in trange(length):
         for _ in range(length):
             inputs = {'input_ids': generated}
+            
             outputs = model(inputs)  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet (cached hidden-states)
+
             next_token_logits = outputs[0, -1, :] / temperature
             filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
             next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
@@ -89,76 +97,47 @@ def sample_sequence(model, context, length, temperature=1, top_k=0, top_p=0.0, d
     return generated.tolist()[0]
 
 
-def fast_sample_sequence(model, context, length, temperature=1, top_k=0, top_p=0.0, device='cpu'):
-    inputs = torch.LongTensor(context).view(1, -1).to(device)
-    if len(context) > 1:
-        _, past = model(inputs[:, :-1], None)[:2]
-        prev = inputs[:, -1].view(1, -1)
-    else:
-        past = None
-        prev = inputs
-    generate = [] + context
-    with torch.no_grad():
-        for i in trange(length):
-            output = model(prev, past=past)
-            output, past = output[:2]
-            output = output[-1].squeeze(0) / temperature
-            filtered_logits = top_k_top_p_filtering(output, top_k=top_k, top_p=top_p)
-            next_token = torch.multinomial(torch.softmax(filtered_logits, dim=-1), num_samples=1)
-            generate.append(next_token.item())
-            prev = next_token.view(1, 1)
-    return generate
 
 
-# 通过命令行参数--fast_pattern，指定模式
-def generate(model, context, length, temperature=1, top_k=0, top_p=0.0, device='cpu', is_fast_pattern=False):
-    if is_fast_pattern:
-        return fast_sample_sequence(model, context, length, temperature=temperature, top_k=top_k, top_p=top_p,
-                                    device=device)
-    else:
-        return sample_sequence(model, context, length, temperature=temperature, top_k=top_k, top_p=top_p, device=device)
+def generate(tokenizer, model, inputs_dict, length, device, temperature=1, top_k=0, top_p=0.0):
+  
+
+    return sample_sequence(tokenizer, model, inputs_dict, length, temperature=temperature, top_k=top_k, top_p=top_p, device=device)
 
     
 def main(question: str, model):
     # os.environ["CUDA_VISIBLE_DEVICES"] = '0'  
-    length = 100
+    length = 50
     batch_size = 1
     nsamples = 1
-    temperature = 0.7
-    topk = 100
-    topp = 0.9
-    prefix=question
-    save_samples = False
-    save_samples_path = './storage/generate'
-    fast_pattern = False
+    temperature = 0.8
+    topk = 30
+    topp = 0.95
+    
+
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     tokenizer = BertTokenizerFast.from_pretrained('./save/')
-    # model = load_model_from_checkpoint(device=device, model_ckpt="./storage/ckpt/model_epoch9.pkl",with_ddp=False)
     model.to(device)
 
     if length == -1:
         # model.gpt2.config.n_ctx = 1024
-        length = model.gpt2.config.n_ctx - len(prefix)
-    elif length > model.gpt2.config.n_ctx - len(prefix):
+        length = model.gpt2.config.n_ctx - len(question)
+    elif length > model.gpt2.config.n_ctx - len(question):
         raise ValueError("Can't get samples longer than window size: %s" % model.config.n_ctx)
     
-    if save_samples:
-        if not os.path.exists(save_samples_path):
-            os.makedirs(save_samples_path)
-        samples_file = open(save_samples_path + '/samples2.txt', 'w', encoding='utf8')
     
     while True:
-        raw_text = prefix
-        context_tokens = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(raw_text))
+        raw_text = question
+        inputs_dict = tokenizer(question)
         generated = 0
         for _ in range(nsamples // batch_size):
             out = generate(
+                tokenizer=tokenizer,
                 model=model,
-                context=context_tokens,
+                inputs_dict=inputs_dict,
                 length=length,
-                is_fast_pattern=fast_pattern,
                 temperature=temperature, top_k=topk, top_p=topp, device=device
             )
             for i in range(batch_size):
@@ -173,34 +152,25 @@ def main(question: str, model):
                     if item == '[CLS]':
                         text[i] = '\n'
                 info = "=" * 40 + " SAMPLE " + str(generated) + " " + "=" * 40 + "\n"
-                # print(info)
                 
                 res = []
                 for t in text:
-                    if t != '[EOS]': res.append(t)
+                    if t != '[SEP]': res.append(t)
                     else: break
+#                 print(res)
+#                 input_text = res[: res.index('[QA]') + 1]
+#                 input_text= ''.join(input_text).replace('##', '').strip()
                 
-                input_text = res[: res.index('[SEP]') + 1]
-                input_text= ''.join(input_text).replace('##', '').strip()
+#                 response_text = res[res.index('[QA]') + 1: ]
                 
-                response_text = res[res.index('[SEP]') + 1: ]
+                response_text = ''.join(res).replace('##', '').strip()
                 
-                response_text = ''.join(['' if i == '[SEP]' else i for i in response_text ]).replace('##', '').strip()
-                
-                if save_samples:
-                    samples_file.write(info)
-                    
-                    samples_file.write(input_text + response_text)
-                    samples_file.write('\n')
-                    samples_file.write('=' * 90)
-                    samples_file.write('\n' * 2)
+
         print("=" * 80)
         if generated == nsamples :
-            # close file when finish writing.
-            if save_samples:
-                samples_file.close()
+
             break
     
-    return response_text
+    return response_text[len(question): ]
     
 

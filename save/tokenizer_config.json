@@ -1,1 +1,16 @@
-{"do_lower_case": false, "unk_token": "[UNK]", "sep_token": "[SEP]", "pad_token": "[PAD]", "cls_token": "[CLS]", "mask_token": "[MASK]", "tokenize_chinese_chars": true, "strip_accents": null, "model_max_length": 512, "special_tokens_map_file": null, "name_or_path": "bert-base-chinese", "tokenizer_class": "BertTokenizer"}
+{
+  "cls_token": "[CLS]",
+  "do_basic_tokenize": true,
+  "do_lower_case": true,
+  "mask_token": "[MASK]",
+  "model_max_length": 512,
+  "name_or_path": "ckiplab/gpt2-base-chinese",
+  "never_split": null,
+  "pad_token": "[PAD]",
+  "sep_token": "[SEP]",
+  "special_tokens_map_file": "/home/jupyter/.cache/huggingface/hub/models--ckiplab--gpt2-base-chinese/snapshots/5b35975016d00703e7d812b9197ea81f295b65c3/special_tokens_map.json",
+  "strip_accents": null,
+  "tokenize_chinese_chars": true,
+  "tokenizer_class": "BertTokenizer",
+  "unk_token": "[UNK]"
+}

@@ -47,24 +47,6 @@
       "rstrip": false,
       "normalized": false,
       "special": true
-    },
-    {
-      "id": 21128,
-      "content": "[BOS]",
-      "single_word": false,
-      "lstrip": false,
-      "rstrip": false,
-      "normalized": false,
-      "special": true
-    },
-    {
-      "id": 21129,
-      "content": "[EOS]",
-      "single_word": false,
-      "lstrip": false,
-      "rstrip": false,
-      "normalized": false,
-      "special": true
     }
   ],
   "normalizer": {
@@ -72,7 +54,7 @@
     "clean_text": true,
     "handle_chinese_chars": true,
     "strip_accents": null,
-    "lowercase": false
+    "lowercase": true
   },
   "pre_tokenizer": {
     "type": "BertPreTokenizer"

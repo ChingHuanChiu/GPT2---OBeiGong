@@ -21,7 +21,7 @@ class GPT2(torch.nn.Module):
         
         logits = self.gpt2(**inputs).logits
 
-
+        
         return logits
 
 

@@ -6,7 +6,7 @@ from src.model.gpt import GPT2
 from generate import main
 
 
-CKPT_PATH = './storage/ckpt/ckpt_ep_50_bs_16model_epoch2.pkl'
+CKPT_PATH = './storage/ckpt/ckpt_ep_50_bs_16model_epoch50.pkl'
 
 tokenizer = BertTokenizerFast.from_pretrained('./save/')
 model=GPT2(tokenizer)
@@ -22,7 +22,8 @@ while True:
     if inp == '掰掰':
         print('掰掰 !')
         break
-    inp += '[SEP]'
+    if inp[-1] != '?':
+        inp += '?'
     print('Model: ', main(inp, model))
     
 

@@ -19,16 +19,15 @@ from src.train.metric import NLGMetric
 
 
 from prepare_data import *
-from src.data.preprocessor import IPreprocessor, GPT2Preprocessor
 from src.abc_class.trainer import DDPTrainer
 
 
 class GPT2Dataset(Dataset):
-    def __init__(self, training: bool, dataframe: pd.DataFrame, need_column: List[str], preprocessor: IPreprocessor = None):
+    def __init__(self, training: bool, dataframe: pd.DataFrame, need_column: List[str], tokenizer):
         super().__init__()
         self.training = training
-        self.preprocessor = preprocessor
         self.df = dataframe[need_column]
+        self.tokenizer = tokenizer
         
     def __len__(self):
         return len(self.df)
@@ -36,16 +35,26 @@ class GPT2Dataset(Dataset):
     def __getitem__(self, idx):
         
         x = self.df.iloc[idx, :]
+    
         
-        x, y = self.preprocessor.transform(x.values[0])
+        x = self.tokenizer(x.values[0], 
+                        padding='max_length', 
+                        truncation=True, 
+                        max_length= SEQ_MAX_LENGTH, 
+                        return_tensors='pt')
+        
         x = {k:v.squeeze() for k, v in x.items()}
-        y = {k:v.squeeze() for k, v in y.items()}
         
-        if self.training:
-            return x, y
         
-        return x
+        y = x['input_ids']
+        shift_y = y[..., 1:].contiguous()
+       
 
+        if self.training:
+            return x, shift_y
+
+        return x
+    
 
 class GPT2Trainer(DDPTrainer):
     def __init__(self, model, metric, initial_lr, num_training_steps, local_rank, warm_up_step, val_dataloader=None):
@@ -60,9 +69,8 @@ class GPT2Trainer(DDPTrainer):
                                                                device_ids=[local_rank],
                                                                 output_device=local_rank)
         self.metric = metric
-        # self.val_dataloader = val_dataloader
         
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=initial_lr)
+        self.optimizer = torch.optim.Adam(self.model.module.parameters(), lr=initial_lr)
         self.lr_scheduler = get_cosine_schedule_with_warmup(
                                                             optimizer=self.optimizer,
                                                             num_warmup_steps=warm_up_step,
@@ -74,14 +82,23 @@ class GPT2Trainer(DDPTrainer):
         
     def train_step(self, X_batch, y_batch):
         X_batch = {k : v.to(self.device) for k, v in X_batch.items()}
-        y_batch = {k : v.to(self.device) for k, v in y_batch.items()}
-        logits = self.model.forward(X_batch)
-        logits = logits.view(-1, logits.size(-1))
-        target = y_batch['input_ids'].squeeze().view(-1)
-
-
-        loss = torch.nn.CrossEntropyLoss()(logits, target)
+        y_batch = y_batch.to(self.device)
         
+        logits = self.model.forward(X_batch)
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_logits  = shift_logits.view(-1, shift_logits.size(-1))
+        target = y_batch.view(-1)
+        
+        # ignore ['PAD']
+        loss_fn = torch.nn.CrossEntropyLoss(ignore_index=0, reduction='sum')
+ 
+        loss = loss_fn(shift_logits, target)
+        
+        not_ignore = target.ne(0)
+        num_targets = not_ignore.long().sum().item()
+        loss = loss / num_targets
+    
+
         
         self.optimizer.zero_grad()
         loss.backward()
@@ -92,70 +109,29 @@ class GPT2Trainer(DDPTrainer):
         
         return loss, None
     
-        
-#     def validation_loop(self, epoch):
-#         VALSTEP_PER_EPOCH = len(self.val_dataloader)
-        
-        
-#         val_metric = self.metric
-#         self.model.eval()
-#         val_running_loss = 0
-#         with torch.no_grad():
-#             for X_val, y_val in self.val_dataloader:
-#                 X_val = {k : v.to(self.device) for k, v in X_val.items()}
-#                 y_val = {k : v.to(self.device) for k, v in y_val.items()}
-                
-#                 logits = self.model.forward(X_val)
-#                 val_logits = logits.view(-1, logits.size(-1))
-#                 target = y_val['input_ids'].squeeze().view(-1)
-                
-#                 val_loss = torch.nn.CrossEntropyLoss()(val_logits, target)
-#                 val_running_loss += val_loss.item()
-                
-#             rank_epoch_val_loss = val_running_loss / VALSTEP_PER_EPOCH
-#             sum_rank_val_epoch_loss = self.reduce_sum_all(rank_epoch_val_loss)
-#             epoch_val_loss = sum_rank_val_epoch_loss.cpu().numpy() / self.world_size
-#             print("="*30)
-#             print(f"Validation Loss : {epoch_val_loss}")
-            
-#             if dist.get_rank() == 0:
-#                 val_writer = SummaryWriter('./storage/tensorboard/val/')
-#                 ValTB = TensorBoard(val_writer)
-#                 val_metric.calculate_metric(epoch_val_loss)
-#                 for name, result in val_metric.get_result().items():
-#                     print(f'Validation {name} over epoch : {float(result)}')
-#                 print('='*30)
-#                 ValTB.start_to_write(metrics_result=val_metric.get_result(),
-#                                        step=epoch)
-#                 val_metric.reset()
-#             dist.barrier()
 
 def main():
-    
-    train = pd.read_csv('./storage/data/train_data/chatbot_baike.csv')
+    train = pd.read_csv('./storage/data/chinese_chatbot/chatbot.csv')
 
 
     dist.init_process_group(backend='nccl')
     dist.barrier()
 
-    EPOCHS = 50
-    BS = 2
+    EPOCHS = 30
+    BS = 16
     initial_lr = 1e-5
-    warm_up = 1000
+    warm_up = 5
     local_rank = int(os.environ["LOCAL_RANK"])
 
     tokenizer = BertTokenizerFast.from_pretrained('./save/')
 
 
 
-    p = GPT2Preprocessor(tokenizer=tokenizer, eos_token='[EOS]', bos_token='')
-    train_dataset = GPT2Dataset(training=True, dataframe=train, need_column=['context'], preprocessor=p)
+
+    train_dataset = GPT2Dataset(training=True, dataframe=train, need_column=['context'], tokenizer=tokenizer)
     train_sampler = DistributedSampler(train_dataset)
     train_loader = DataLoader(train_dataset, batch_size=BS, sampler=train_sampler)
 
-    # val_dataset = GPT2Dataset(training=True, dataframe=val, need_column=['context'], preprocessor=p)
-    # val_sampler = DistributedSampler(val_dataset)
-    # val_loader = DataLoader(val_dataset, batch_size=BS, sampler=val_sampler)
 
     NUM_TRAINING_STEPS = EPOCHS * len(train_loader)
 
@@ -171,8 +147,8 @@ def main():
     mygpt.start_to_train(
                     train_data_loader=train_loader,
                     epochs=EPOCHS,
-                    checkpoint_path=f'./storage/ckpt_ep_{EPOCHS}_bs_{BS}/',
-                    tensorboard_path=f'/gcs/pchome-hadoopincloud-hadoop/user/stevenchiou/tmp/test/tb/train/',
+                    checkpoint_path=f'/gcs/pchome-hadoopincloud-hadoop/user/stevenchiou/tmp/test/ckpt_ep_{EPOCHS}_bs_{BS}',
+                    tensorboard_path='/gcs/pchome-hadoopincloud-hadoop/user/stevenchiou/tmp/test/tb/train/',
                     local_rank=local_rank,
                     sampler=train_sampler
                         )
