@@ -3,7 +3,7 @@
 ## Introduction
   The name "OBeiGong" is the pronunciation of Taiwanese, which means the answers is nonsense.LOL 
 
-  Using the [PTT 中文語料](https://github.com/zake7749/Gossiping-Chinese-Corpus) and [chatbot dataset](https://github.com/gunthercox/chatterbot-corpus/tree/master/chatterbot_corpus/data/chinese) to make a simple QA model by finetuning the GPT2 model.
+  Using the [chatbot dataset](https://github.com/gunthercox/chatterbot-corpus/tree/master/chatterbot_corpus/data/chinese) to make a simple QA model by fine-tuning the GPT2 model.
 
 ## Data Preprocessing
   In order to deal with large text input (length of tokens > 1024), the following strategy is using:  
@@ -13,3 +13,5 @@
        subtext1 : 今天天氣不好，感覺會下雨，  
        subtext2 : 感覺會下雨，記得帶把傘
 
+## Demonstration
+  ![My Image](./storage/images/example.png)  
